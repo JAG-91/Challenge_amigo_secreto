@@ -1,41 +1,197 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;400;700;900&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap" rel="stylesheet">
-    <title>Amigo Secreto</title>
+  <!-- Metadatos y título de la página -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visualización RYB/WK</title>
+
+  <!-- Hoja de estilos externa -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Estilos adicionales internos -->
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f0e8;
+      color: #333;
+      padding: 2rem;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      border-radius: 12px;
+      margin-top: 1rem;
+    }
+    .charts {
+      display: flex;
+      gap: 2rem;
+      margin-top: 2rem;
+    }
+    .chart {
+      text-align: center;
+    }
+    .slider {
+      margin-top: 1rem;
+    }
+  </style>
 </head>
 
 <body>
-    <main class="main-content">
-        <header class="header-banner">
-            <h1 class="main-title">Amigo Secreto</h1>
-            <img src="assets/amigo-secreto.png" alt="Imagen representativa de amigo secreto">
-        </header>
-        
-        <section class="input-section">
-            <h2 class="section-title">Digite el nombre de sus amigos</h2>
-            <div class="input-wrapper">
-                <input type="text" id="amigo" class="input-name" placeholder="Escribe un nombre">
-                <button class="button-add" onclick="agregarAmigo()">Añadir</button>
-            </div>
-           
-            <ul id="listaAmigos" class="name-list" aria-labelledby="listaAmigos" role="list"></ul>
-            <ul id="resultado" class="result-list" aria-live="polite"></ul>
+  <!-- Título principal -->
+  <h1>Modelo RYB/WK según Luminancia</h1>
 
-            <div class="button-container">
-                <button class="button-draw" onclick="sortearAmigo()" aria-label="Sortear amigo secreto">
-                    <img src="assets/play_circle_outline.png" alt="Ícono para sortear">
-                    Sortear amigo
-                </button>
-            </div>
-        </section>
-    </main>
+  <!-- Carga de imagen JPEG -->
+  <input type="file" accept="image/jpeg" id="imageInput" />
 
-    <script src="app.js" defer></script>
+  <!-- Control deslizante para corrección de luminancia (L) -->
+  <div class="slider">
+    <label for="lCorrection">Factor de corrección L: <span id="lVal">1.00</span></label>
+    <input type="range" min="0.1" max="2" step="0.01" value="1" id="lCorrection" />
+  </div>
+
+  <!-- Área de dibujo de imagen -->
+  <canvas id="imageCanvas" width="400" height="400"></canvas>
+  <div>Luminancia corregida: <span id="lOut">0</span></div>
+
+  <!-- Área para el gráfico circular (pie chart) de composición -->
+  <div class="charts">
+    <div class="chart">
+      <div>Composición RYB/WK</div>
+      <canvas id="chartCombined" width="160" height="160"></canvas>
+    </div>
+  </div>
+
+  <!-- Lógica principal de procesamiento -->
+  <script>
+    // Elementos HTML
+    const input = document.getElementById('imageInput');
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
+    const chart = document.getElementById('chartCombined');
+    const chartCtx = chart.getContext('2d');
+    const lSlider = document.getElementById('lCorrection');
+    const lVal = document.getElementById('lVal');
+    const lOut = document.getElementById('lOut');
+
+    let imageData;
+    let lFactor = 1.0;
+
+    // Actualiza el valor de corrección de luminancia
+    lSlider.addEventListener('input', () => {
+      lFactor = parseFloat(lSlider.value);
+      lVal.textContent = lFactor.toFixed(2);
+    });
+
+    // Carga la imagen seleccionada
+    input.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          imageData = ctx.getImageData(0, 0, img.width, img.height);
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Evento al mover el mouse sobre la imagen
+    canvas.addEventListener('mousemove', (e) => {
+      if (!imageData) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor(e.clientX - rect.left);
+      const y = Math.floor(e.clientY - rect.top);
+      const i = (y * imageData.width + x) * 4;
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+
+      // Cálculo de luminancia y corrección
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      const lCorrected = Math.min(255, l * lFactor);
+      lOut.textContent = lCorrected.toFixed(2);
+
+      // Determinar influencia de modelos RYB/WK según la luminancia
+      const distMid = Math.abs(lCorrected - 127.5) / 127.5;
+      const relRYB = 1 - distMid;
+      const relWK = distMid;
+
+      // Conversión a RYB y WK
+      const ryb = refinedRGBtoRYB(r, g, b);
+      const wk = rgbToWK(r, g, b);
+
+      // Datos para el gráfico circular
+      const chartData = [
+        { label: 'R', value: ryb.r * relRYB, color: '#f00' },
+        { label: 'Y', value: ryb.y * relRYB, color: '#ff0' },
+        { label: 'B', value: ryb.b * relRYB, color: '#00f' },
+        { label: 'W', value: wk.w * relWK, color: '#ccc' },
+        { label: 'K', value: wk.k * relWK, color: '#000' }
+      ];
+
+      // Normalización a porcentaje total 100%
+      const total = chartData.reduce((sum, s) => sum + s.value, 0);
+      chartData.forEach(s => s.value = (s.value / total) * 100);
+
+      // Dibujar gráfico circular
+      drawPieChart(chart, chartData);
+    });
+
+    // Conversión refinada de RGB a RYB (modelo pigmentario)
+    function refinedRGBtoRYB(r, g, b) {
+      let R = r / 255, G = g / 255, B = b / 255;
+      const white = Math.min(R, G, B);
+      R -= white; G -= white; B -= white;
+      const ryb = {
+        r: Math.max(0, R - Math.min(G, B)),
+        y: Math.min(G, R),
+        b: Math.max(0, B - Math.min(R, G))
+      };
+      if (G > R && G > B) {
+        ryb.y += G * 0.6;
+        ryb.b += G * 0.4;
+      }
+      const total = ryb.r + ryb.y + ryb.b || 1;
+      return {
+        r: (ryb.r / total) * 100,
+        y: (ryb.y / total) * 100,
+        b: (ryb.b / total) * 100
+      };
+    }
+
+    // Conversión de RGB a WK (modelo de blancos y negros)
+    function rgbToWK(r, g, b) {
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      const w = l / 255;
+      const k = 1 - w;
+      return {
+        w: w * 100,
+        k: k * 100
+      };
+    }
+
+    // Dibujo del gráfico circular
+    function drawPieChart(canvas, segments) {
+      const ctx = canvas.getContext('2d');
+      const radius = canvas.width / 2;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let start = 0;
+      segments.forEach(seg => {
+        const angle = (seg.value / 100) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(radius, radius);
+        ctx.arc(radius, radius, radius, start, start + angle);
+        ctx.closePath();
+        ctx.fillStyle = seg.color;
+        ctx.fill();
+        start += angle;
+      });
+    }
+  </script>
 </body>
 </html>
